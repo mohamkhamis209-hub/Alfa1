@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>دخول المشرف</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <div class="login-container">
+        <img src="assets/logo.jpg" alt="Logo" class="logo">
+        <h2>دخول المشرف</h2>
+        
+        <!-- ✅ تم إزالة أي value من الحقول نهائياً -->
+        <input type="text" id="username" placeholder="اسم المستخدم">
+        <input type="password" id="code" placeholder="الكود السري">
+        
+        <button onclick="adminLogin()">دخول</button>
+        <p id="error-msg" style="color:red; margin-top:10px;"></p>
+    </div>
+
+    <script>
+        // 🔥 البيانات الثابتة موجودة هنا في السكربت (محدش يشوفها في الحقول)
+        const ADMIN_USER = 'Mohamed';
+        const ADMIN_PASS = '25112009';
+
+        window.adminLogin = function() {
+            const user = document.getElementById('username').value.trim();
+            const pass = document.getElementById('code').value.trim();
+            
+            if (user === ADMIN_USER && pass === ADMIN_PASS) {
+                localStorage.setItem('adminLoggedIn', 'true');
+                window.location.href = 'admin-panel.html';
+            } else {
+                document.getElementById('error-msg').innerText = '❌ اسم المستخدم أو الكود غير صحيح';
+            }
+        };
+
+        // ✅ تأكيد تحميل النسخة الجديدة (في Console)
+        console.log('✅ تم تحميل صفحة الدخول الجديدة (بدون قيم افتراضية)');
+    </script>
+</body>
+</html>

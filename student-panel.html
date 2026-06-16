@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>لوحة الطالب</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <!-- منع التحميل وحفظ الملفات -->
+    <script>
+        document.addEventListener('contextmenu', e => e.preventDefault());
+        document.addEventListener('dragstart', e => e.preventDefault());
+        document.addEventListener('touchstart', (e) => {
+            if (e.target.tagName === 'IMG' || e.target.tagName === 'VIDEO') {
+                e.preventDefault();
+            }
+        }, { passive: false });
+    </script>
+
+    <div class="sidebar">
+        <img src="assets/Mohamed.jpg" alt="Admin" class="admin-img">
+        <h4>المنصة التعليمية</h4>
+        <ul>
+            <li onclick="loadSection('videos')">🎬 الفيديوهات</li>
+            <li onclick="loadSection('books')">📚 الكتب</li>
+            <li onclick="loadSection('exams')">📝 الاختبارات</li>
+            <li onclick="loadSection('notifications')">🔔 الإشعارات</li>
+        </ul>
+        <button onclick="logoutStudent()" style="margin-top:50px; background:#e74c3c; color:white; border:none; padding:10px; border-radius:8px; cursor:pointer; width:100%; font-size:16px;">🚪 خروج</button>
+    </div>
+    
+    <div class="content" id="student-content">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+            <h2>مرحباً بك في المنصة</h2>
+            <div class="bell" onclick="loadSection('notifications')">
+                🔔 <span id="notif-count">0</span>
+            </div>
+        </div>
+        <p style="font-size:18px; color:#666;">اختر ما تريد من القائمة الجانبية</p>
+    </div>
+
+    <script src="js/firebase-config.js" type="module"></script>
+    <script type="module">
+        import { db, collection, getDocs } from './js/firebase-config.js';
+
+        window.loadSection = async function(section) {
+            const container = document.getElementById('student-content');
+            container.innerHTML = `<h2>⏳ جاري التحميل...</h2>`;
+
+            if (section === 'videos') {
+                const snap = await getDocs(collection(db, 'videos'));
+                let html = `<h2>🎬 الفيديوهات</h2>`;
+                if (snap.empty) html += `<p>لا توجد فيديوهات حالياً</p>`;
+                snap.forEach(d => {
+                    const data = d.data();
+                    html += `<div style="margin:25px 0; background:white; padding:15px; border-radius:15px; box-shadow:0 2px 10px rgba(0,0,0,0.05);">
+                                <h3 style="margin-bottom:10px;">${data.title}</h3>
+                                <iframe src="${data.url}" width="100%" height="400" frameborder="0" allowfullscreen style="border-radius:10px;"></iframe>
+                            </div>`;
+                });
+                container.innerHTML = html;
+            } 
+            else if (section === 'books') {
+                const snap = await getDocs(collection(db, 'books'));
+                let html = `<h2>📚 الكتب</h2>`;
+                if (snap.empty) html += `<p>لا توجد كتب حالياً</p>`;
+                snap.forEach(d => {
+                    const data = d.data();
+                    html += `<div style="margin:25px 0; background:white; padding:15px; border-radius:15px; box-shadow:0 2px 10px rgba(0,0,0,0.05);">
+                                <h3 style="margin-bottom:10px;">${data.title}</h3>
+                                <iframe src="${data.url}" width="100%" height="550" frameborder="0" style="border-radius:10px;"></iframe>
+                            </div>`;
+                });
+                container.innerHTML = html;
+            }
+            else if (section === 'exams') {
+                const snap = await getDocs(collection(db, 'exams'));
+                let html = `<h2>📝 الاختبارات</h2>`;
+                if (snap.empty) html += `<p>لا توجد اختبارات حالياً</p>`;
+                snap.forEach(d => {
+                    const data = d.data();
+                    html += `<div style="border:1px solid #e0e0e0; padding:20px; margin:20px 0; border-radius:15px; background:white;">
+                                <h3>${data.title}</h3>
+                                <p><strong>النوع:</strong> ${data.type}</p>
+                                <div style="background:#f9f9f9; padding:15px; border-radius:10px; margin-top:10px;">
+                                    ${data.type === 'image' ? `<img src="${data.content}" width="100%" style="border-radius:10px;">` : 
+                                      data.type === 'video' ? `<video controls controlsList="nodownload" src="${data.content}" width="100%" style="border-radius:10px;"></video>` : 
+                                      `<p style="font-size:18px;">${data.content}</p>`}
+                                </div>
+                            </div>`;
+                });
+                container.innerHTML = html;
+            }
+            else if (section === 'notifications') {
+                const snap = await getDocs(collection(db, 'notifications'));
+                let html = `<h2>🔔 الإشعارات</h2>`;
+                let count = 0;
+                const myCode = localStorage.getItem('studentCode');
+                let found = false;
+                snap.forEach(d => {
+                    const data = d.data();
+                    if (data.targetStudent === 'all' || data.targetStudent === myCode) {
+                        found = true;
+                        count++;
+                        html += `<div style="border-bottom:1px solid #eee; padding:20px; background:white; margin-bottom:15px; border-radius:12px; box-shadow:0 1px 5px rgba(0,0,0,0.03);">
+                                    <p style="font-size:17px;">${data.text}</p>`;
+                        if (data.mediaUrl) {
+                            if (data.mediaType === 'video') {
+                                html += `<video controls controlsList="nodownload" src="${data.mediaUrl}" width="100%" height="250" style="border-radius:10px; margin-top:10px;"></video>`;
+                            } else {
+                                html += `<img src="${data.mediaUrl}" width="100%" style="border-radius:10px; margin-top:10px;">`;
+                            }
+                        }
+                        html += `<small style="color:#888;">${data.sentAt?.toDate?.()?.toLocaleString() || ''}</small>
+                                </div>`;
+                    }
+                });
+                if (!found) html += `<p>لا توجد إشعارات لك حالياً</p>`;
+                document.getElementById('notif-count').innerText = count;
+                container.innerHTML = html;
+            }
+        };
+
+        // تسجيل الخروج
+        window.logoutStudent = function() {
+            localStorage.removeItem('studentCode');
+            window.location.href = 'index.html';
+        };
+
+        // التحميل الافتراضي (فيديوهات)
+        loadSection('videos');
+    </script>
+</body>
+</html>

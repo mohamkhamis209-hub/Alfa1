@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>لوحة المشرف</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <div class="sidebar">
+        <img src="assets/Mohamed.jpg" alt="Admin" class="admin-img">
+        <h3>مرحباً محمد</h3>
+        <ul>
+            <li onclick="showSection('dashboard')">📊 الرئيسية</li>
+            <li onclick="showSection('students')">👨‍🎓 الطلاب</li>
+            <li onclick="showSection('videos')">🎬 الفيديوهات</li>
+            <li onclick="showSection('books')">📚 الكتب</li>
+            <li onclick="showSection('exams')">📝 الاختبارات</li>
+            <li onclick="showSection('notifications')">🔔 الإشعارات</li>
+            <li onclick="showSection('devices')">📱 طلبات الأجهزة</li>
+            <li onclick="logoutAdmin()" style="color:#e74c3c;">🚪 خروج</li>
+        </ul>
+    </div>
+    <div class="content" id="content-area">
+        <h2>مرحباً في لوحة التحكم</h2>
+        <p>اختر أحد الأقسام من القائمة الجانبية</p>
+    </div>
+
+    <script src="js/firebase-config.js" type="module"></script>
+    <script src="js/device.js" type="module"></script>
+    <script type="module">
+        import { 
+            db, storage, ref, uploadBytes, getDownloadURL,
+            collection, addDoc, getDocs, deleteDoc, doc, updateDoc, query, where 
+        } from './js/firebase-config.js';
+
+        // توليد كود عشوائي
+        function generateCode() {
+            return Math.random().toString(36).substring(2, 8).toUpperCase();
+        }
+
+        // دالة العرض الرئيسية
+        window.showSection = function(section) {
+            document.getElementById('content-area').innerHTML = `<h2>جاري التحميل...</h2>`;
+            switch(section) {
+                case 'dashboard': showDashboard(); break;
+                case 'students': showStudents(); break;
+                case 'videos': showVideos(); break;
+                case 'books': showBooks(); break;
+                case 'exams': showExams(); break;
+                case 'notifications': showNotifications(); break;
+                case 'devices': showPendingDevices(); break;
+                default: showDashboard();
+            }
+        };
+
+        // ---------- Dashboard ----------
+        function showDashboard() {
+            document.getElementById('content-area').innerHTML = `
+                <h2>📊 لوحة التحكم</h2>
+                <p style="font-size:18px;">أهلاً بك يا مشرف، يمكنك إدارة كل شيء من هنا.</p>
+                <p style="color:#888;">عدد الطلاب: <span id="studentCount">0</span></p>
+            `;
+            // نجيب عدد الطلاب
+            getDocs(collection(db, 'students')).then(snap => {
+                document.getElementById('studentCount').innerText = snap.size;
+            });
+        }
+
+        // ---------- الطلاب ----------
+        window.addStudent = async function() {
+            const name = document.getElementById('stName').value.trim();
+            if (!name) return alert('أدخل اسم الطالب');
+            const code = generateCode();
+            await addDoc(collection(db, 'students'), {
+                name, code, status: 'active', suspendMessage: '', deviceId: '', registeredAt: new Date()
+            });
+            alert(`✅ تم إضافة ${name} بالكود ${code}`);
+            showStudents();
+        };
+
+        async function showStudents() {
+            const snap = await getDocs(collection(db, 'students'));
+            let html = `<h2>👨‍🎓 إدارة الطلاب</h2>
+                        <div style="display:flex; flex-wrap:wrap; gap:10px; margin-bottom:20px; align-items:center;">
+                            <input id="stName" placeholder="اسم الطالب الجديد" style="flex:1; min-width:200px;">
+                            <button onclick="addStudent()" style="width:auto; padding:12px 30px;">➕ إضافة</button>
+                        </div>
+                        <div style="overflow-x:auto;">
+                        <table border="1" cellpadding="10" style="width:100%; border-collapse:collapse; background:white;">`;
+            if (snap.empty) html += `<tr><td colspan="4" style="text-align:center;">لا يوجد طلاب</td></tr>`;
+            snap.forEach(doc => {
+                const d = doc.data();
+                html += `<tr>
+                    <td><strong>${d.name}</strong></td>
+                    <td>${d.code}</td>
+                    <td>${d.status === 'active' ? '🟢 نشط' : '🔴 معلق'}</td>
+                    <td>
+                        <button onclick="suspendStudent('${d.code}')" style="width:auto; padding:5px 15px; background:#f39c12;">⛔ تعليق</button>
+                        <button onclick="deleteStudent('${d.code}')" style="width:auto; padding:5px 15px; background:#e74c3c;">🗑️ حذف</button>
+                    </td>
+                </tr>`;
+            });
+            html += `</table></div>`;
+            document.getElementById('content-area').innerHTML = html;
+        }
+
+        window.deleteStudent = async function(code) {
+            if (!confirm('حذف الطالب نهائياً؟')) return;
+            const q = query(collection(db, 'students'), where('code', '==', code));
+            const snap = await getDocs(q);
+            snap.forEach(async (d) => { await deleteDoc(d.ref); });
+            alert('تم الحذف');
+            showStudents();
+        };
+
+        window.suspendStudent = async function(code) {
+            const msg = prompt('اكتب سبب التعليق (سيظهر للطالب عند دخوله):');
+            if (msg === null) return;
+            const q = query(collection(db, 'students'), where('code', '==', code));
+            const snap = await getDocs(q);
+            snap.forEach(async (d) => {
+                await updateDoc(d.ref, { status: 'suspended', suspendMessage: msg });
+            });
+            alert('تم تعليق الحساب');
+            showStudents();
+        };
+
+        // ---------- الفيديوهات ----------
+        window.addVideo = async function() {
+            const title = document.getElementById('vidTitle').value.trim();
+            const url = document.getElementById('vidUrl').value.trim();
+            if (!title || !url) return alert('املأ البيانات');
+            await addDoc(collection(db, 'videos'), { title, url, addedAt: new Date() });
+            alert('✅ تمت الإضافة');
+            showVideos();
+        };
+
+        async function showVideos() {
+            const snap = await getDocs(collection(db, 'videos'));
+            let html = `<h2>🎬 الفيديوهات</h2>
+                        <div style="display:flex; flex-wrap:wrap; gap:10px; margin-bottom:20px; align-items:center;">
+                            <input id="vidTitle" placeholder="عنوان الفيديو">
+                            <input id="vidUrl" placeholder="رابط يوتيوب (embed)" style="flex:2; min-width:200px;">
+                            <button onclick="addVideo()" style="width:auto; padding:12px 30px;">➕ إضافة</button>
+                        </div>`;
+            if (snap.empty) html += `<p>لا يوجد فيديوهات</p>`;
+            snap.forEach(d => {
+                const data = d.data();
+                html += `<div style="border:1px solid #ddd; padding:15px; margin:15px 0; border-radius:10px; background:white;">
+                            <h4>${data.title}</h4>
+                            <iframe src="${data.url}" width="100%" height="350" frameborder="0" allowfullscreen></iframe>
+                            <button onclick="deleteItem('videos','${d.id}')" style="width:auto; margin-top:10px; background:#e74c3c;">🗑️ حذف</button>
+                        </div>`;
+            });
+            document.getElementById('content-area').innerHTML = html;
+        }
+
+        // ---------- الكتب ----------
+        window.addBook = async function() {
+            const title = document.getElementById('bookTitle').value.trim();
+            const url = document.getElementById('bookUrl').value.trim();
+            if (!title || !url) return alert('املأ البيانات');
+            await addDoc(collection(db, 'books'), { title, url, addedAt: new Date() });
+            alert('✅ تمت الإضافة');
+            showBooks();
+        };
+
+        async function showBooks() {
+            const snap = await getDocs(collection(db, 'books'));
+            let html = `<h2>📚 الكتب</h2>
+                        <div style="display:flex; flex-wrap:wrap; gap:10px; margin-bottom:20px; align-items:center;">
+                            <input id="bookTitle" placeholder="عنوان الكتاب">
+                            <input id="bookUrl" placeholder="رابط جوجل درايف (preview)" style="flex:2; min-width:200px;">
+                            <button onclick="addBook()" style="width:auto; padding:12px 30px;">➕ إضافة</button>
+                        </div>`;
+            if (snap.empty) html += `<p>لا يوجد كتب</p>`;
+            snap.forEach(d => {
+                const data = d.data();
+                html += `<div style="border:1px solid #ddd; padding:15px; margin:15px 0; border-radius:10px; background:white;">
+                            <h4>${data.title}</h4>
+                            <iframe src="${data.url}" width="100%" height="500" frameborder="0"></iframe>
+                            <button onclick="deleteItem('books','${d.id}')" style="width:auto; margin-top:10px; background:#e74c3c;">🗑️ حذف</button>
+                        </div>`;
+            });
+            document.getElementById('content-area').innerHTML = html;
+        }
+
+        // ---------- الاختبارات ----------
+        window.addExam = async function() {
+            const title = document.getElementById('exTitle').value.trim();
+            const type = document.getElementById('exType').value;
+            const content = document.getElementById('exContent').value.trim();
+            if (!title || !content) return alert('املأ البيانات');
+            await addDoc(collection(db, 'exams'), { title, type, content, addedAt: new Date() });
+            alert('✅ تمت الإضافة');
+            showExams();
+        };
+
+        async function showExams() {
+            const snap = await getDocs(collection(db, 'exams'));
+            let html = `<h2>📝 الاختبارات</h2>
+                        <div style="display:flex; flex-wrap:wrap; gap:10px; margin-bottom:20px; align-items:center;">
+                            <input id="exTitle" placeholder="عنوان الاختبار">
+                            <select id="exType"><option value="text">نص</option><option value="image">صورة</option><option value="video">فيديو</option></select>
+                            <input id="exContent" placeholder="نص السؤال أو الرابط" style="flex:2; min-width:200px;">
+                            <button onclick="addExam()" style="width:auto; padding:12px 30px;">➕ إضافة</button>
+                        </div>`;
+            if (snap.empty) html += `<p>لا يوجد اختبارات</p>`;
+            snap.forEach(d => {
+                const data = d.data();
+                html += `<div style="border:1px solid #ddd; padding:15px; margin:15px 0; border-radius:10px; background:white;">
+                            <h4>${data.title}</h4>
+                            <p><strong>النوع:</strong> ${data.type}</p>
+                            <p><strong>المحتوى:</strong> ${data.content}</p>
+                            <button onclick="deleteItem('exams','${d.id}')" style="width:auto; background:#e74c3c;">🗑️ حذف</button>
+                        </div>`;
+            });
+            document.getElementById('content-area').innerHTML = html;
+        }
+
+        // ---------- الإشعارات (مع رفع ملفات) ----------
+        window.sendNotif = async function() {
+            const text = document.getElementById('notifText').value.trim();
+            const fileInput = document.getElementById('notifFile');
+            const target = document.getElementById('notifTarget').value.trim() || 'all';
+            if (!text) return alert('أدخل نص الإشعار');
+
+            let mediaUrl = null, mediaType = null;
+            if (fileInput.files.length > 0) {
+                const file = fileInput.files[0];
+                mediaType = file.type.startsWith('video/') ? 'video' : 'image';
+                const storageRef = ref(storage, `notifications/${Date.now()}_${file.name}`);
+                await uploadBytes(storageRef, file);
+                mediaUrl = await getDownloadURL(storageRef);
+            }
+
+            await addDoc(collection(db, 'notifications'), {
+                text, mediaUrl, mediaType, targetStudent: target, isRead: false, sentAt: new Date()
+            });
+            alert('✅ تم إرسال الإشعار');
+            showNotifications();
+        };
+
+        async function showNotifications() {
+            const snap = await getDocs(collection(db, 'notifications'));
+            let html = `<h2>🔔 الإشعارات</h2>
+                        <div style="border:1px solid #ccc; padding:15px; border-radius:10px; margin-bottom:20px; background:#f9f9f9;">
+                            <input id="notifText" placeholder="نص الإشعار" style="width:100%; margin-bottom:10px;">
+                            <input type="file" id="notifFile" accept="image/*,video/*" style="margin-bottom:10px;">
+                            <input id="notifTarget" placeholder="كود طالب معين أو اتركه 'all'" style="margin-bottom:10px;">
+                            <button onclick="sendNotif()" style="width:auto; padding:12px 30px;">📨 إرسال الإشعار</button>
+                        </div>`;
+            if (snap.empty) html += `<p>لا يوجد إشعارات</p>`;
+            snap.forEach(d => {
+                const data = d.data();
+                html += `<div style="border-bottom:1px solid #eee; padding:15px; background:white; margin-bottom:10px; border-radius:8px;">
+                            <p style="font-size:16px;">${data.text}</p>`;
+                if (data.mediaUrl) {
+                    if (data.mediaType === 'video') {
+                        html += `<video controls controlsList="nodownload" src="${data.mediaUrl}" width="100%" height="250" style="border-radius:8px; margin:10px 0;"></video>`;
+                    } else {
+                        html += `<img src="${data.mediaUrl}" width="100%" style="border-radius:8px; margin:10px 0;">`;
+                    }
+                }
+                html += `<small style="color:#888;">${data.sentAt?.toDate?.()?.toLocaleString() || ''} | المستهدف: ${data.targetStudent}</small>
+                            <br><button onclick="deleteItem('notifications','${d.id}')" style="width:auto; margin-top:10px; background:#e74c3c;">🗑️ حذف</button>
+                        </div>`;
+            });
+            document.getElementById('content-area').innerHTML = html;
+        }
+
+        // ---------- طلبات الأجهزة ----------
+        async function showPendingDevices() {
+            const q = query(collection(db, 'pendingDevices'), where('status', '==', 'pending'));
+            const snap = await getDocs(q);
+            let html = `<h2>📱 طلبات الأجهزة الجديدة</h2>`;
+            if (snap.empty) html += `<p>لا توجد طلبات معلقة</p>`;
+            snap.forEach(async (d) => {
+                const data = d.data();
+                html += `<div style="border:1px solid #ddd; padding:15px; margin:15px 0; border-radius:10px; background:white;">
+                            <p><strong>الطالب كود:</strong> ${data.studentCode}</p>
+                            <p><strong>الجهاز:</strong> ${data.deviceId}</p>
+                            <button onclick="approveDevice('${d.id}', '${data.studentCode}', '${data.deviceId}')" style="width:auto; background:#2ecc71;">✅ موافقة</button>
+                            <button onclick="rejectDevice('${d.id}')" style="width:auto; background:#e74c3c;">❌ رفض</button>
+                        </div>`;
+            });
+            document.getElementById('content-area').innerHTML = html;
+        }
+
+        window.approveDevice = async function(docId, studentCode, deviceId) {
+            await updateDoc(doc(db, 'pendingDevices', docId), { status: 'approved' });
+            const q = query(collection(db, 'students'), where('code', '==', studentCode));
+            const snap = await getDocs(q);
+            snap.forEach(async (s) => { await updateDoc(s.ref, { deviceId }); });
+            alert('✅ تمت الموافقة على الجهاز');
+            showPendingDevices();
+        };
+
+        window.rejectDevice = async function(docId) {
+            await updateDoc(doc(db, 'pendingDevices', docId), { status: 'rejected' });
+            alert('❌ تم رفض الجهاز');
+            showPendingDevices();
+        };
+
+        // ---------- دالة الحذف العامة ----------
+        window.deleteItem = async function(collectionName, docId) {
+            if (!confirm('هل أنت متأكد من الحذف؟')) return;
+            await deleteDoc(doc(db, collectionName, docId));
+            alert('🗑️ تم الحذف بنجاح');
+            showSection('dashboard'); // نرجع للرئيسية عشان نحدّث
+            // نشغل التحديث التلقائي
+            setTimeout(() => { showSection(collectionName); }, 100);
+        };
+
+        // ---------- تسجيل الخروج ----------
+        window.logoutAdmin = function() {
+            localStorage.removeItem('adminLoggedIn');
+            window.location.href = 'index.html';
+        };
+
+        // بداية تحميل الصفحة
+        showSection('dashboard');
+    </script>
+</body>
+</html>
